@@ -4,12 +4,151 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Intranet TANDAR - Presentación</title>
+    <!-- Cargamos la librería PDF.js desde un servidor rápido -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; }
-        iframe { width: 100%; height: 100%; border: none; }
+        * { box-sizing: border-box; }
+        body, html { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            background-color: #0f1115; font-family: sans-serif;
+            overflow: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center;
+        }
+        #presentation-container {
+            position: relative; width: 100%; height: 100%;
+            display: flex; justify-content: center; align-items: center;
+            cursor: pointer;
+        }
+        canvas {
+            max-width: 100%; max-height: 100%;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            object-fit: contain;
+        }
+        /* Controles de navegación inferiores */
+        .controls {
+            position: absolute; bottom: 20px; left: 50%;
+            transform: translateX(-50%); display: flex; align-items: center;
+            gap: 15px; background: rgba(0, 0, 0, 0.75);
+            padding: 10px 20px; border-radius: 30px;
+            backdrop-filter: blur(5px); z-index: 10;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .btn {
+            background: none; border: none; color: white;
+            font-size: 18px; cursor: pointer; padding: 5px 10px;
+            border-radius: 5px; transition: background 0.2s;
+        }
+        .btn:hover { background: rgba(255,255,255,0.2); }
+        .btn:disabled { color: #555; cursor: not-allowed; }
+        #page-info { color: white; font-size: 14px; user-select: none; }
     </style>
 </head>
 <body>
-    <iframe src="Intranet-TANDAR.pdf"></iframe>
+
+    <div id="presentation-container" onclick="nextPageOnClick(event)">
+        <canvas id="pdf-canvas"></canvas>
+    </div>
+
+    <div class="controls">
+        <button class="btn" id="prev-btn">◀</button>
+        <span id="page-info">Diapositiva <span id="page-num">1</span> de <span id="page-count">0</span></span>
+        <button class="btn" id="next-btn">▶</button>
+    </div>
+
+    <script>
+        // Ruta al PDF que subiste a tu repositorio
+        const url = 'Intranet-TANDAR.pdf';
+
+        let pdfDoc = null,
+            pageNum = 1,
+            pageIsRendering = false,
+            pageNumPending = null;
+
+        const scale = 2, // Calidad de renderizado (2 es excelente definición)
+              canvas = document.getElementById('pdf-canvas'),
+              ctx = canvas.getContext('2d');
+
+        // Configurar worker de PDF.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+        // Renderizar la página actual como una imagen limpia en el canvas
+        function renderPage(num) {
+            pageIsRendering = true;
+            document.getElementById('page-num').textContent = num;
+
+            pdfDoc.getPage(num).then(page => {
+                const viewport = page.getViewport({ scale: scale });
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                const renderContext = {
+                    canvasContext: ctx,
+                    viewport: viewport
+                };
+
+                page.render(renderContext).promise.then(() => {
+                    pageIsRendering = false;
+                    if (pageNumPending !== null) {
+                        renderPage(pageNumPending);
+                        pageNumPending = null;
+                    }
+                });
+            });
+
+            // Bloquear/Desbloquear botones según la diapositiva
+            document.getElementById('prev-btn').disabled = num <= 1;
+            document.getElementById('next-btn').disabled = num >= pdfDoc.numPages;
+        }
+
+        function queueRenderPage(num) {
+            if (pageIsRendering) {
+                pageNumPending = num;
+            } else {
+                renderPage(num);
+            }
+        }
+
+        // Funciones para avanzar y retroceder
+        function onPrevPage() {
+            if (pageNum <= 1) return;
+            pageNum--;
+            queueRenderPage(pageNum);
+        }
+
+        function onNextPage() {
+            if (pageNum >= pdfDoc.numPages) return;
+            pageNum++;
+            queueRenderPage(pageNum);
+        }
+
+        // Avanzar al hacer clic en cualquier parte de la diapositiva
+        function nextPageOnClick(e) {
+            // Evitar que avance si se hace clic en la barra de controles
+            if (e.target.closest('.controls')) return;
+            onNextPage();
+        }
+
+        // Soporte para avanzar/retroceder con las flechas del teclado
+        window.addEventListener('keydown', e => {
+            if (e.key === 'ArrowRight' || e.key === ' ') {
+                onNextPage();
+            } else if (e.key === 'ArrowLeft') {
+                onPrevPage();
+            }
+        });
+
+        // Eventos de los botones
+        document.getElementById('prev-btn').addEventListener('click', onPrevPage);
+        document.getElementById('next-btn').addEventListener('click', onNextPage);
+
+        // Cargar el documento PDF
+        pdfjsLib.getDocument(url).promise.then(pdfDoc_ => {
+            pdfDoc = pdfDoc_;
+            document.getElementById('page-count').textContent = pdfDoc.numPages;
+            renderPage(pageNum);
+        }).catch(err => {
+            console.error('Error al cargar el PDF: ', err);
+            alert('No se pudo cargar la presentación. Asegúrate de que el archivo Intranet-TANDAR.pdf esté en la misma carpeta raíz del repositorio.');
+        });
+    </script>
 </body>
 </html>
